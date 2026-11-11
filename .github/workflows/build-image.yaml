@@ -4,34 +4,80 @@ on:
   workflow_dispatch:
   release:
     types:
-      - created
+    - created
+  schedule:
+  - cron: 00 00 * * *
+
+permissions:
+  contents: read
 
 jobs:
   docker:
+    permissions:
+      # for docker/build-push-action to publish docker image
+      packages: write
+
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set tag for image
-        run: |
-          echo IMAGE_TAG=$([ ${{ github.ref_type }} == 'tag' ] && echo ${{ github.ref_name }} || echo 'latest') >> $GITHUB_ENV
-      - name: Build and Push
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          build-args: |
-            INSTALL_ALL=true
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set tag for image
+      env:
+        REF_TYPE: ${{ github.ref_type }}
+        REF_NAME: ${{ github.ref_name }}
+      run: >-
+        echo IMAGE_TAG=$(
+        [ $REF_TYPE == 'tag' ]
+        && echo $REF_NAME
+        || echo 'latest'
+        ) >> $GITHUB_ENV
+
+    - name: Set IMAGE_REPO environment variable
+      # Lowercase the org/repo name to allow for workflow to run in forks,
+      # which owners have uppercase letters in username
+      run: >-
+        echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY@L}" >> $GITHUB_ENV
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+    - name: Build and Push release
+      if: github.event_name != 'schedule'
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      with:
+        context: .
+        build-args: |
+          INSTALL_ALL=true
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+          ${{ env.IMAGE_REPO }}:latest
+        # Fix multi-platform: https://github.com/docker/buildx/issues/1533
+        provenance: false
+
+    - name: Build and Push nightly
+      if: github.event_name == 'schedule'
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      with:
+        context: .
+        build-args: |
+          INSTALL_ALL=true
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ${{ env.IMAGE_REPO }}:nightly
+        # Fix multi-platform: https://github.com/docker/buildx/issues/1533
+        provenance: false

@@ -1,3 +1,6 @@
 *
 !.dockerignore
 !Dockerfile
+!tools/entrypoint.sh
+!tools/install/*.sh
+!hooks/_logging.sh

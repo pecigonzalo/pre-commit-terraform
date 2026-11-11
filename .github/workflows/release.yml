@@ -4,29 +4,56 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - master
+    - master
     paths:
-      - '**/*.py'
-      - '**/*.sh'
-      - 'Dockerfile'
+    - '**/*.py'
+    - '**/*.sh'
+    - Dockerfile
+    - .pre-commit-hooks.yaml
+    # Ignore paths
+    - '!tests/**'
+
+permissions:
+  contents: read
+
+env:
+  # yamllint disable-line rule:line-length
+  # renovate: datasource=github-releases depName=semantic-release lookupName=semantic-release/semantic-release
+  SR_VERSION: 19.0.3
+  # yamllint disable-line rule:line-length
+  # renovate: datasource=github-releases depName=semantic-release lookupName=semantic-release/changelog
+  SR_CHANGELOG_VERSION: 6.0.0
+  # renovate: datasource=github-releases depName=semantic-release lookupName=semantic-release/git
+  SR_GIT_VERSION: 10.0.0
 
 jobs:
   release:
+    permissions:
+      # for cycjimmy/semantic-release-action to create a release
+      contents: write
+      # for cycjimmy/semantic-release-action to write comments to issues
+      issues: write
+      # for cycjimmy/semantic-release-action to write comments to PRs
+      pull-requests: write
+
     name: Release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-          fetch-depth: 0
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      with:
+        persist-credentials: false
+        fetch-depth: 0
 
-      - name: Release
-        uses: cycjimmy/semantic-release-action@v2
-        with:
-          semantic_version: 18.0.0
-          extra_plugins: |
-            @semantic-release/changelog@6.0.0
-            @semantic-release/git@10.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+    - name: Release
+      uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90  # v6.0.0
+      with:
+        semantic_version: ${{ env.SR_VERSION }}
+        extra_plugins: |
+          @semantic-release/changelog@${{ env.SR_CHANGELOG_VERSION }}
+          @semantic-release/git@${{ env.SR_GIT_VERSION }}
+      env:
+        # Custom token for triggering Docker image build GH Workflow on release
+        # created by cycjimmy/semantic-release-action. Events created by
+        # workflows with default GITHUB_TOKEN not trigger other GH Workflow.
+        GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}

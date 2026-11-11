@@ -1,22 +1,26 @@
 # Notes for contributors
 
-1. Python hooks are supported now too. All you have to do is:
-    1. add a line to the `console_scripts` array in `entry_points` in `setup.py`
-    2. Put your python script in the `pre_commit_hooks` folder
+> Using AI tools? Read the [AI/LLM Usage Policy](AI_POLICY.md) first.
 
-Enjoy the clean, valid, and documented code!
-
+* [Configure `git blame` to ignore formatting commits](#configure-git-blame-to-ignore-formatting-commits)
 * [Run and debug hooks locally](#run-and-debug-hooks-locally)
 * [Run hook performance test](#run-hook-performance-test)
   * [Run via BASH](#run-via-bash)
   * [Run via Docker](#run-via-docker)
   * [Check results](#check-results)
   * [Cleanup](#cleanup)
+* [Required tools and plugins to simplify review process](#required-tools-and-plugins-to-simplify-review-process)
 * [Add new hook](#add-new-hook)
   * [Before write code](#before-write-code)
   * [Prepare basic documentation](#prepare-basic-documentation)
   * [Add code](#add-code)
   * [Finish with the documentation](#finish-with-the-documentation)
+* [Contributing to Python code](#contributing-to-python-code)
+* [Run tests in your fork](#run-tests-in-your-fork)
+
+## Configure `git blame` to ignore formatting commits
+
+This project uses `.git-blame-ignore-revs` to exclude formatting-related commits from `git blame` history. To configure your local `git blame` to ignore these commits, refer to the [.git-blame-ignore-revs](/.git-blame-ignore-revs) file for details.
 
 ## Run and debug hooks locally
 
@@ -56,6 +60,10 @@ Script accept next options:
 | 5   | `RAW_TEST_`<br>`RESULTS_FILE_NAME` | `terraform_tfsec_pr123`                                                  | (Temporary) File where all test data will be stored. |
 <!-- markdownlint-enable no-inline-html -->
 
+> **Note:** To make test results repeatable and comparable, be sure that on the test machine nothing generates an unstable workload. During tests good to stop any other apps and do not interact with the test machine.
+>
+> Otherwise, for eg, when you watch Youtube videos during one test and not during other, test results can differ up to 30% for the same test.
+
 ### Run via BASH
 
 ```bash
@@ -68,8 +76,8 @@ sudo apt install -y datamash
 ### Run via Docker
 
 ```bash
-# Build `pre-commit` image
-docker build -t pre-commit --build-arg INSTALL_ALL=true .
+# Build `pre-commit-terraform` image
+docker build -t pre-commit-terraform --build-arg INSTALL_ALL=true .
 # Build test image
 docker build -t pre-commit-tests tests/
 # Run
@@ -94,6 +102,13 @@ Results will be located at `./test/results` dir.
 sudo rm -rf tests/results
 ```
 
+## Required tools and plugins to simplify review process
+
+1. [editorconfig.org](https://editorconfig.org/) (preinstalled in some IDE)
+2. [pre-commit](https://pre-commit.com/#install)
+3. (Optional) If you use VS Code - feel free to install all recommended extensions
+
+
 ## Add new hook
 
 You can use [this PR](https://github.com/antonbabenko/pre-commit-terraform/pull/252) as an example.
@@ -102,6 +117,8 @@ You can use [this PR](https://github.com/antonbabenko/pre-commit-terraform/pull/
 
 1. Try to figure out future hook usage.
 2. Confirm the concept with [Anton Babenko](https://github.com/antonbabenko).
+3. Install [required tools and plugins](#required-tools-and-plugins-to-simplify-review-process)
+
 
 ### Prepare basic documentation
 
@@ -109,15 +126,22 @@ You can use [this PR](https://github.com/antonbabenko/pre-commit-terraform/pull/
 
 ### Add code
 
+> [!TIP]
+> Here is a screencast of [how to add new dependency in `tools/install/`](https://github.com/antonbabenko/pre-commit-terraform/assets/11096782/8fc461e9-f163-4592-9497-4a18fa89c0e8) - used in Dockerfile
+
 1. Based on prev. block, add hook dependencies installation to [Dockerfile](../Dockerfile).  
     Check that works:
     * `docker build -t pre-commit --build-arg INSTALL_ALL=true .`
     * `docker build -t pre-commit --build-arg <NEW_HOOK>_VERSION=latest .`
     * `docker build -t pre-commit --build-arg <NEW_HOOK>_VERSION=<1.2.3> .`
-2. Add new hook to [`.pre-commit-hooks.yaml`](../.pre-commit-hooks.yaml)
-3. Create hook file. Don't forget to make it executable via `chmod +x /path/to/hook/file`.
-4. Test hook. How to do it is described in [Run and debug hooks locally](#run-and-debug-hooks-locally) section.
-5. Test hook one more time.
+
+    > [!NOTE]
+    > `tools/install/<tool>.sh` has a second call site besides the Dockerfile: if the new tool is distributed as a GitHub (or HashiCorp) release binary, `hooks/_common.sh::common::resolve_tool_path` invokes this same script at hook run-time to support [`--hook-config=--tool-version=`](../README.md#most-hooks-pin-a-specific-tool-version). Wire your new hook to it the same way the existing binary-wrapping hooks are (look at how `terraform_tflint.sh` or `terrascan.sh` call `common::resolve_tool_path`), unless the tool has a different distribution model (e.g. pip, like `checkov`) - in that case, skip this and leave a comment explaining why, as `terraform_checkov.sh` does.
+2. Add Docker structure tests to [`.github/.container-structure-test-config.yaml`](.container-structure-test-config.yaml)
+3. Add new hook to [`.pre-commit-hooks.yaml`](../.pre-commit-hooks.yaml)
+4. Create hook file. Don't forget to make it executable via `chmod +x /path/to/hook/file`.
+5. Test hook. How to do it is described in [Run and debug hooks locally](#run-and-debug-hooks-locally) section.
+6. Test hook one more time.
     1. Push commit with hook file to GitHub
     2. Grab SHA hash of the commit
     3. Test hook using `.pre-commit-config.yaml`:
@@ -134,5 +158,46 @@ You can use [this PR](https://github.com/antonbabenko/pre-commit-terraform/pull/
 
 ### Finish with the documentation
 
-1. Add hook description to [Available Hooks](../README.md#available-hooks).
+1. Add the hook description to [Available Hooks](../README.md#available-hooks).
 2. Create and populate a new hook section in [Hooks usage notes and examples](../README.md#hooks-usage-notes-and-examples).
+
+## Contributing to Python code
+
+1. [Install `tox`](https://tox.wiki/en/stable/installation.html)
+2. To run tests, run:
+
+    ```bash
+    tox -qq
+    ```
+
+    The easiest way to find out what parts of the code base are left uncovered, is to copy-paste and run the `python3 ...` command that will open the HTML report, so you can inspect it visually.
+
+3. Before committing any changes (if you do not have `pre-commit` installed locally), run:
+
+    ```bash
+    tox r -qq -e pre-commit
+    ```
+
+    Make sure that all checks pass.
+
+4. (Optional): If you want to limit the checks to MyPy only, you can run:
+
+    ```bash
+    tox r -qq -e pre-commit -- mypy --all-files
+    ```
+
+    Then copy-paste and run the `python3 ...` commands to inspect the strictest MyPy coverage reports visually.
+
+5. (Optional): You can find all available `tox` environments by running:
+
+    ```bash
+    tox list
+    ```
+
+## Run tests in your fork
+
+Go to your fork's `Actions` tab and click the big green button.
+
+![Enable workflows](/assets/contributing/enable_actions_in_fork.png)
+
+Now you can verify that the tests pass before submitting your PR.
